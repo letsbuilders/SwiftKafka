@@ -26,6 +26,7 @@ final class SwiftKafkaTests: XCTestCase {
         ("testConfig", testConfig),
         ("testCommitSync", testCommitSync),
         ("testProduceCallback", testProduceCallback),
+        ("testCreateTopic", testCreateTopic)
     ]
     
     // Homebrew instructions for mac https://medium.com/@Ankitthakur/apache-kafka-installation-on-mac-using-homebrew-a367cdefd273
@@ -176,6 +177,47 @@ final class SwiftKafkaTests: XCTestCase {
         waitForExpectations(timeout: 10) { error in
             // blocks test until request completes
             XCTAssertNil(error)
+        }
+    }
+
+    func testCreateTopic() {
+        do {
+            let config = KafkaConfig()
+            config.brokerAddressFamily = .v4
+            let producer = try KafkaProducer(config: config)
+            guard producer.connect(brokers: self.brokerAddress) == 1 else {
+                return XCTFail("Failed to connect to brokers. Ensure Kafka server is running.")
+            }
+            
+            let creationResults = try producer.admin.createTopics(topicNames: ["test5"])
+            XCTAssertEqual(creationResults.count, 1)
+            for result in creationResults {
+                switch result {
+                case .success(let topicSpec):
+                    XCTAssertEqual(topicSpec.name, "test5")
+                case .failure(let error):
+                    if error.kafkaError.rawValue == 36 { // 36 Topic already exists
+                        print(error.kafkaError.description)
+                    } else {
+                        return XCTFail(error.kafkaError.description)
+                    }
+                }
+            }
+            sleep(1) // Let kafka breath
+
+            let destructionResults = try producer.admin.deleteTopics(topicsNames: ["test5"])
+            XCTAssertEqual(destructionResults.count, 1)
+            for result in destructionResults {
+                switch result {
+                case .success(let topicName):
+                    XCTAssertEqual(topicName, "test5")
+                case .failure(let error):
+                    return XCTFail(error.kafkaError.description)
+                }
+            }
+
+        } catch {
+            return XCTFail((error as? KafkaError)?.description ?? "")
         }
     }
 }
